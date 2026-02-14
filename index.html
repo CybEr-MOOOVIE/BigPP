@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SyncStream POC</title>
+    <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        #password-overlay { background: rgba(0,0,0,0.9); transition: opacity 0.5s; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body class="bg-gray-900 text-white font-sans overflow-x-hidden">
+
+    <div id="password-overlay" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="bg-gray-800 p-8 rounded-xl shadow-2xl max-w-sm w-full text-center">
+            <h2 class="text-2xl font-bold mb-4">Educational POC</h2>
+            <p class="text-gray-400 mb-6 text-sm">Please enter the access password</p>
+            <input type="password" id="pass-input" class="w-full bg-gray-700 p-3 rounded mb-4 border border-gray-600 focus:outline-none focus:border-blue-500" placeholder="Password: 1234">
+            <button onclick="checkPassword()" class="w-full bg-blue-600 hover:bg-blue-700 py-3 rounded font-bold transition">Enter Room</button>
+        </div>
+    </div>
+
+    <div id="main-content" class="hidden min-h-screen flex flex-col lg:flex-row">
+        
+        <div class="flex-grow p-4 lg:p-8">
+            <div class="mb-4 flex justify-between items-center">
+                <div>
+                    <h1 class="text-xl font-bold text-blue-400">SyncStream <span id="user-count" class="ml-2 text-xs bg-gray-700 px-2 py-1 rounded">Users: 0</span></h1>
+                </div>
+                <div class="text-sm text-gray-400">Logged in as: <span id="display-name" class="font-bold text-white"></span></div>
+            </div>
+
+            <div class="relative pt-[56.25%] bg-black rounded-lg overflow-hidden shadow-lg border border-gray-800">
+                <iframe id="video-player" class="absolute inset-0 w-full h-full" 
+                        src="https://www.youtube.com/embed/tgbNymZ7vqY?enablejsapi=1" 
+                        frameborder="0" allowfullscreen></iframe>
+            </div>
+
+            <div class="mt-4 p-4 bg-gray-800 rounded-lg">
+                <p class="text-sm text-gray-400 mb-2">Movie URL / ID (Demo uses YouTube ID for stability)</p>
+                <div class="flex gap-2">
+                    <input type="text" id="video-url" class="flex-grow bg-gray-700 p-2 rounded text-sm" placeholder="Paste YouTube Video ID (e.g., dQw4w9WgXcQ)">
+                    <button onclick="changeVideo()" class="bg-blue-600 px-4 py-2 rounded text-sm font-bold">Update Sync</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="w-full lg:w-80 bg-gray-800 border-l border-gray-700 flex flex-col h-[400px] lg:h-screen">
+            <div class="p-4 border-b border-gray-700 font-bold">Live Chat</div>
+            <div id="chat-box" class="flex-grow p-4 overflow-y-auto space-y-3 text-sm">
+                </div>
+            <div class="p-4 bg-gray-900">
+                <form onsubmit="event.preventDefault(); sendChatMessage();">
+                    <input type="text" id="chat-input" class="w-full bg-gray-700 p-2 rounded focus:outline-none" placeholder="Type a message...">
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ABLY_KEY = '07BFEg.BHH9sQ:ACVC6y_4Jv0rP3Q_8-K1XDW-TFIN2Vifx-IpKyro_I8'; // <--- PASTE KEY HERE
+        const PASS = "BigPP123"; // Default password
+        let userName = localStorage.getItem('user_name') || "User_" + Math.floor(Math.random()*1000);
+        
+        const ably = new Ably.Realtime(ABLY_KEY);
+        const channel = ably.channels.get('sync-room');
+        const chatBox = document.getElementById('chat-box');
+
+        // 1. Password Protection Logic
+        function checkPassword() {
+            const input = document.getElementById('pass-input').value;
+            if (input === PASS) {
+                document.getElementById('password-overlay').classList.add('hidden');
+                document.getElementById('main-content').classList.remove('hidden');
+                initApp();
+            } else {
+                alert("Wrong password!");
+            }
+        }
+
+        function initApp() {
+            document.getElementById('display-name').innerText = userName;
+            localStorage.setItem('user_name', userName);
+
+            // Subscribe to Sync Events (Video changes)
+            channel.subscribe('video-sync', (msg) => {
+                const player = document.getElementById('video-player');
+                player.src = `https://www.youtube.com/embed/${msg.data.videoId}?enablejsapi=1`;
+                appendSystemMessage(`Video updated to: ${msg.data.videoId}`);
+            });
+
+            // Subscribe to Chat
+            channel.subscribe('chat', (msg) => {
+                appendChat(msg.data.user, msg.data.text);
+            });
+
+            // Presence (User Count)
+            channel.presence.enter({name: userName});
+            channel.presence.subscribe(() => {
+                channel.presence.get((err, members) => {
+                    document.getElementById('user-count').innerText = `Users: ${members.length}`;
+                });
+            });
+        }
+
+        // 2. Chat Logic
+        function sendChatMessage() {
+            const input = document.getElementById('chat-input');
+            if (input.value.trim() !== "") {
+                channel.publish('chat', { user: userName, text: input.value });
+                input.value = "";
+            }
+        }
+
+        function appendChat(user, text) {
+            const div = document.createElement('div');
+            div.innerHTML = `<span class="text-blue-400 font-bold">${user}:</span> <span class="text-gray-200">${text}</span>`;
+            chatBox.appendChild(div);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function appendSystemMessage(text) {
+            const div = document.createElement('div');
+            div.className = "text-xs text-gray-500 italic text-center py-1";
+            div.innerText = text;
+            chatBox.appendChild(div);
+        }
+
+        // 3. Sync Logic
+        function changeVideo() {
+            const videoId = document.getElementById('video-url').value;
+            if (videoId) {
+                channel.publish('video-sync', { videoId: videoId });
+            }
+        }
+    </script>
+</body>
+</html>
