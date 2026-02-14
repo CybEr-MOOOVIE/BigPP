@@ -28,7 +28,7 @@
         
         <div class="flex-1 bg-black flex flex-col relative group">
             <div class="absolute top-0 left-0 w-full p-4 bg-gradient-to-b from-black/80 to-transparent z-10 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                <h1 class="text-xl font-bold text-blue-400">Educational Stream POC</h1>
+                <h1 class="text-xl font-bold text-blue-400">Movie Streeming</h1>
                 <div class="bg-gray-800/80 px-3 py-1 rounded-full text-sm">
                     <span class="w-2 h-2 bg-green-500 rounded-full inline-block mr-2 animate-pulse"></span>
                     <span id="viewerCount">0</span> Watching
@@ -53,7 +53,7 @@
                     <span id="userNameDisplay" class="text-gray-400 text-sm font-normal"></span>
                 </div>
                 <div class="flex gap-2">
-                    <input id="searchInput" type="text" placeholder="Search movies (RapidAPI)" class="flex-1 bg-gray-700 text-white rounded px-3 py-2 focus:outline-none">
+                    <input id="searchInput" type="text" placeholder="Search movies" class="flex-1 bg-gray-700 text-white rounded px-3 py-2 focus:outline-none">
                     <button id="btnSearch" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded">Search</button>
                 </div>
                 <div id="searchResults" class="max-h-48 overflow-auto mt-2 space-y-2"></div>
@@ -76,7 +76,7 @@
         // ================= CONFIGURATION =================
         // REPLACE THESE WITH YOUR KEYS
         const ABLY_API_KEY = '07BFEg.BHH9sQ:ACVC6y_4Jv0rP3Q_8-K1XDW-TFIN2Vifx-IpKyro_I8'; 
-        const ROOM_PASSWORD = '1234'; // Simple password
+        const ROOM_PASSWORD = 'BigPP123'; // Simple password
         const CHANNEL_NAME = 'movie-party-room';
         // RapidAPI (Streaming Availability) - set your RapidAPI key here
         const RAPIDAPI_KEY = '2257fc56a1msh8268c055fe52483p19251ejsnd73ec1e756fa'; // <-- Set your RapidAPI key
@@ -632,4 +632,5 @@
 
     </script>
 </body>
+
 </html>
