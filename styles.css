@@ -1,0 +1,26 @@
+*{box-sizing:border-box;font-family:Inter,system-ui,Segoe UI,Arial,sans-serif}
+body{margin:0;background:#0f172a;color:#e6eef8}
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#071233}
+.topbar h1{margin:0;font-size:18px}
+.meta{font-size:14px;color:#c7d4e6}
+.layout{display:flex;flex-direction:column;padding:12px;gap:12px}
+.player-area{flex:1}
+.player-wrapper{width:100%;max-width:1200px;margin:0 auto}
+.ratio-box{position:relative;padding-bottom:56.25%;height:0;background:#000;border-radius:6px;overflow:hidden}
+.ratio-box iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0}
+.controls{display:flex;gap:8px;justify-content:center;margin-top:8px}
+.controls button,input{padding:8px;border-radius:6px;border:1px solid #21304a;background:#0b2540;color:#e6eef8}
+.chat-area{max-width:420px;margin:0 auto;background:#071233;padding:12px;border-radius:8px}
+.login-row{display:flex;gap:8px;margin-bottom:8px}
+.messages{height:360px;overflow:auto;background:#031026;padding:8px;border-radius:6px;border:1px solid #0b2740}
+.message{padding:6px;border-bottom:1px solid #082233}
+.chat-form{display:flex;gap:8px;margin-top:8px}
+.overlay{position:fixed;inset:0;background:rgba(2,6,23,0.8);display:flex;align-items:center;justify-content:center}
+.overlay.hidden{display:none}
+.overlay-card{background:#071233;padding:20px;border-radius:8px;max-width:360px;width:90%}
+.hint{font-size:12px;color:#7d8fa6}
+@media(min-width:900px){
+  .layout{flex-direction:row;align-items:flex-start;gap:16px}
+  .player-area{flex:1}
+  .chat-area{width:360px;flex:0 0 360px}
+}

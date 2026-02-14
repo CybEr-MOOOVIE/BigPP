@@ -3,138 +3,633 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SyncStream POC</title>
-    <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
+    <title>WatchParty POC</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
     <style>
-        #password-overlay { background: rgba(0,0,0,0.9); transition: opacity 0.5s; }
-        .hidden { display: none !important; }
+        /* Custom scrollbar for chat */
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
-<body class="bg-gray-900 text-white font-sans overflow-x-hidden">
+<body class="bg-gray-900 text-white h-screen overflow-hidden flex flex-col font-sans">
 
-    <div id="password-overlay" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div class="bg-gray-800 p-8 rounded-xl shadow-2xl max-w-sm w-full text-center">
-            <h2 class="text-2xl font-bold mb-4">Educational POC</h2>
-            <p class="text-gray-400 mb-6 text-sm">Please enter the access password</p>
-            <input type="password" id="pass-input" class="w-full bg-gray-700 p-3 rounded mb-4 border border-gray-600 focus:outline-none focus:border-blue-500" placeholder="Password: 1234">
-            <button onclick="checkPassword()" class="w-full bg-blue-600 hover:bg-blue-700 py-3 rounded font-bold transition">Enter Room</button>
+    <div id="authOverlay" class="fixed inset-0 bg-black z-50 flex items-center justify-center">
+        <div class="bg-gray-800 p-8 rounded-lg shadow-2xl w-96 text-center">
+            <h2 class="text-2xl font-bold mb-4 text-blue-400">Join Watch Party</h2>
+            <input type="text" id="usernameInput" placeholder="Enter your Name" class="w-full p-3 mb-3 bg-gray-700 rounded border border-gray-600 text-white focus:outline-none focus:border-blue-500">
+            <input type="password" id="passwordInput" placeholder="Room Password" class="w-full p-3 mb-6 bg-gray-700 rounded border border-gray-600 text-white focus:outline-none focus:border-blue-500">
+            <button onclick="attemptLogin()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded transition">ENTER ROOM</button>
+            <p id="loginError" class="text-red-500 mt-3 text-sm hidden">Incorrect password or missing name.</p>
         </div>
     </div>
 
-    <div id="main-content" class="hidden min-h-screen flex flex-col lg:flex-row">
+    <div id="appInterface" class="flex-1 flex flex-col md:flex-row h-full opacity-20 pointer-events-none transition-opacity duration-500">
         
-        <div class="flex-grow p-4 lg:p-8">
-            <div class="mb-4 flex justify-between items-center">
-                <div>
-                    <h1 class="text-xl font-bold text-blue-400">SyncStream <span id="user-count" class="ml-2 text-xs bg-gray-700 px-2 py-1 rounded">Users: 0</span></h1>
+        <div class="flex-1 bg-black flex flex-col relative group">
+            <div class="absolute top-0 left-0 w-full p-4 bg-gradient-to-b from-black/80 to-transparent z-10 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <h1 class="text-xl font-bold text-blue-400">Educational Stream POC</h1>
+                <div class="bg-gray-800/80 px-3 py-1 rounded-full text-sm">
+                    <span class="w-2 h-2 bg-green-500 rounded-full inline-block mr-2 animate-pulse"></span>
+                    <span id="viewerCount">0</span> Watching
                 </div>
-                <div class="text-sm text-gray-400">Logged in as: <span id="display-name" class="font-bold text-white"></span></div>
             </div>
 
-            <div class="relative pt-[56.25%] bg-black rounded-lg overflow-hidden shadow-lg border border-gray-800">
-                <iframe id="video-player" class="absolute inset-0 w-full h-full" 
-                        src="https://www.youtube.com/embed/tgbNymZ7vqY?enablejsapi=1" 
-                        frameborder="0" allowfullscreen></iframe>
-            </div>
-
-            <div class="mt-4 p-4 bg-gray-800 rounded-lg">
-                <p class="text-sm text-gray-400 mb-2">Movie URL / ID (Demo uses YouTube ID for stability)</p>
-                <div class="flex gap-2">
-                    <input type="text" id="video-url" class="flex-grow bg-gray-700 p-2 rounded text-sm" placeholder="Paste YouTube Video ID (e.g., dQw4w9WgXcQ)">
-                    <button onclick="changeVideo()" class="bg-blue-600 px-4 py-2 rounded text-sm font-bold">Update Sync</button>
-                </div>
+            <div class="relative w-full h-full flex items-center justify-center">
+                <iframe 
+                    id="vidfast-player"
+                    src="https://vidfast.pro/movie/533535?theme=3B82F6&autoPlay=false" 
+                    class="w-full h-full border-0"
+                    allowfullscreen 
+                    allow="encrypted-media; autoplay">
+                </iframe>
             </div>
         </div>
 
-        <div class="w-full lg:w-80 bg-gray-800 border-l border-gray-700 flex flex-col h-[400px] lg:h-screen">
-            <div class="p-4 border-b border-gray-700 font-bold">Live Chat</div>
-            <div id="chat-box" class="flex-grow p-4 overflow-y-auto space-y-3 text-sm">
+        <div class="w-full md:w-96 bg-gray-800 border-l border-gray-700 flex flex-col h-1/3 md:h-full">
+            <div class="p-4 border-b border-gray-700 bg-gray-800 font-semibold flex flex-col gap-3">
+                <div class="flex justify-between items-center">
+                    <span>Live Chat</span>
+                    <span id="userNameDisplay" class="text-gray-400 text-sm font-normal"></span>
                 </div>
-            <div class="p-4 bg-gray-900">
-                <form onsubmit="event.preventDefault(); sendChatMessage();">
-                    <input type="text" id="chat-input" class="w-full bg-gray-700 p-2 rounded focus:outline-none" placeholder="Type a message...">
+                <div class="flex gap-2">
+                    <input id="searchInput" type="text" placeholder="Search movies (RapidAPI)" class="flex-1 bg-gray-700 text-white rounded px-3 py-2 focus:outline-none">
+                    <button id="btnSearch" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded">Search</button>
+                </div>
+                <div id="searchResults" class="max-h-48 overflow-auto mt-2 space-y-2"></div>
+            </div>
+            
+            <div id="chatContainer" class="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-hide">
+                <div class="text-center text-gray-500 text-sm mt-4">Welcome to the chat!</div>
+            </div>
+
+            <div class="p-4 bg-gray-750 border-t border-gray-700">
+                <form id="chatForm" class="flex gap-2">
+                    <input type="text" id="chatInput" autocomplete="off" placeholder="Type a message..." class="flex-1 bg-gray-700 text-white rounded px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">Send</button>
                 </form>
             </div>
         </div>
     </div>
 
     <script>
-        const ABLY_KEY = '07BFEg.BHH9sQ:ACVC6y_4Jv0rP3Q_8-K1XDW-TFIN2Vifx-IpKyro_I8'; // <--- PASTE KEY HERE
-        const PASS = "BigPP123"; // Default password
-        let userName = localStorage.getItem('user_name') || "User_" + Math.floor(Math.random()*1000);
-        
-        const ably = new Ably.Realtime(ABLY_KEY);
-        const channel = ably.channels.get('sync-room');
-        const chatBox = document.getElementById('chat-box');
+        // ================= CONFIGURATION =================
+        // REPLACE THESE WITH YOUR KEYS
+        const ABLY_API_KEY = '07BFEg.BHH9sQ:ACVC6y_4Jv0rP3Q_8-K1XDW-TFIN2Vifx-IpKyro_I8'; 
+        const ROOM_PASSWORD = '1234'; // Simple password
+        const CHANNEL_NAME = 'movie-party-room';
+        // RapidAPI (Streaming Availability) - set your RapidAPI key here
+        const RAPIDAPI_KEY = '2257fc56a1msh8268c055fe52483p19251ejsnd73ec1e756fa'; // <-- Set your RapidAPI key
+        const RAPIDAPI_HOST = 'streaming-availability.p.rapidapi.com';
+        // =================================================
 
-        // 1. Password Protection Logic
-        function checkPassword() {
-            const input = document.getElementById('pass-input').value;
-            if (input === PASS) {
-                document.getElementById('password-overlay').classList.add('hidden');
-                document.getElementById('main-content').classList.remove('hidden');
-                initApp();
+        let ably, channel;
+        let currentUser = '';
+        let iframe = document.getElementById('vidfast-player');
+        let isRemoteUpdate = false; // Prevents infinite sync loops
+        let expectingStatusPublish = false;
+
+        // 1. COOKIE HELPERS
+        function setCookie(name, value, days) {
+            const d = new Date();
+            d.setTime(d.getTime() + (days*24*60*60*1000));
+            document.cookie = name + "=" + value + ";" + "expires=" + d.toUTCString() + ";path=/";
+        }
+
+        function getCookie(cname) {
+            let name = cname + "=";
+            let decodedCookie = decodeURIComponent(document.cookie);
+            let ca = decodedCookie.split(';');
+            for(let i = 0; i <ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0) == ' ') c = c.substring(1);
+                if (c.indexOf(name) == 0) return c.substring(name.length, c.length);
+            }
+            return "";
+        }
+
+        // 2. INITIALIZATION
+        window.onload = () => {
+            const savedName = getCookie("username");
+            if(savedName) document.getElementById('usernameInput').value = savedName;
+        };
+
+        function attemptLogin() {
+            const name = document.getElementById('usernameInput').value.trim();
+            const pass = document.getElementById('passwordInput').value;
+
+            if (pass === ROOM_PASSWORD && name !== "") {
+                currentUser = name;
+                setCookie("username", name, 7);
+                document.getElementById('authOverlay').style.display = 'none';
+                document.getElementById('appInterface').classList.remove('opacity-20', 'pointer-events-none');
+                document.getElementById('userNameDisplay').textContent = name;
+                initAbly();
             } else {
-                alert("Wrong password!");
+                document.getElementById('loginError').classList.remove('hidden');
             }
         }
 
-        function initApp() {
-            document.getElementById('display-name').innerText = userName;
-            localStorage.setItem('user_name', userName);
+        // 3. ABLY REALTIME SETUP
+        function initAbly() {
+            // initialize Ably with a stable clientId (username)
+            ably = new Ably.Realtime({ key: ABLY_API_KEY, clientId: currentUser });
+            channel = ably.channels.get(CHANNEL_NAME);
 
-            // Subscribe to Sync Events (Video changes)
-            channel.subscribe('video-sync', (msg) => {
-                const player = document.getElementById('video-player');
-                player.src = `https://www.youtube.com/embed/${msg.data.videoId}?enablejsapi=1`;
-                appendSystemMessage(`Video updated to: ${msg.data.videoId}`);
-            });
+            // Subscribe to Presence (User Count)
+            channel.presence.enter(currentUser);
+            channel.presence.subscribe('enter', updateMemberCount);
+            channel.presence.subscribe('leave', updateMemberCount);
+            channel.presence.get((err, members) => updateMemberCount());
 
             // Subscribe to Chat
             channel.subscribe('chat', (msg) => {
-                appendChat(msg.data.user, msg.data.text);
+                addMessageToChat(msg.data.user, msg.data.text);
             });
 
-            // Presence (User Count)
-            channel.presence.enter({name: userName});
-            channel.presence.subscribe(() => {
-                channel.presence.get((err, members) => {
-                    document.getElementById('user-count').innerText = `Users: ${members.length}`;
+            // Subscribe to Video Sync Commands
+            channel.subscribe('video-sync', (msg) => {
+                // ignore if message has no data
+                if(!msg || !msg.data) return;
+                // If I sent this, still handle (coordinator logic relies on sender), but many actions should be ignored locally
+                handleRemoteCommand(msg.data, msg.clientId);
+            });
+
+            // status/heartbeat channel
+            channel.subscribe('status', (msg) => {
+                if(!msg || !msg.data) return;
+                if(msg.clientId === currentUser) return; // ignore own
+                handleRemoteStatus(msg.clientId, msg.data);
+            });
+
+            // Sync readiness messages used during coordinated loads
+            channel.subscribe('sync:ready', (msg) => {
+                if(!msg || !msg.data) return;
+                handleSyncReady(msg.clientId, msg.data);
+            });
+
+            // Coordinator start message
+            channel.subscribe('sync:start', (msg) => {
+                if(!msg || !msg.data) return;
+                handleSyncStart(msg.data);
+            });
+            // start heartbeat interval
+            setInterval(()=>{ requestPlayerStatusForHeartbeat(); }, 10000);
+        }
+
+        function updateMemberCount() {
+            channel.presence.get((err, members) => {
+                document.getElementById('viewerCount').innerText = members ? members.length : 0;
+            });
+        }
+
+        // 4. CHAT LOGIC
+        document.getElementById('chatForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const input = document.getElementById('chatInput');
+            const text = input.value.trim();
+            if (text) {
+                channel.publish('chat', { user: currentUser, text: text });
+                input.value = '';
+            }
+        });
+
+        function addMessageToChat(user, text) {
+            const div = document.createElement('div');
+            const isMe = user === currentUser;
+            
+            div.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'}`;
+            div.innerHTML = `
+                <div class="text-xs text-gray-400 mb-1">${user}</div>
+                <div class="px-3 py-2 rounded-lg max-w-[85%] break-words ${isMe ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200'}">
+                    ${text}
+                </div>
+            `;
+            
+            const container = document.getElementById('chatContainer');
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // 5. VIDEO SYNC LOGIC (VidFast + Ably)
+
+        // Listen for Local Events (From Iframe)
+        const vidfastOrigins = ['https://vidfast.pro', 'https://vidfast.in', 'https://vidfast.io', 'https://vidfast.me'];
+        
+        window.addEventListener('message', ({ origin, data }) => {
+            if (!vidfastOrigins.includes(origin) || !data || !channel) return;
+
+            // Only process PLAYER_EVENTs
+            if (data.type === 'PLAYER_EVENT') {
+                const { event, currentTime } = data.data;
+
+                // If this event was caused by a remote command, simply reset the flag and do NOT broadcast
+                if (isRemoteUpdate) {
+                    if (event === 'seeked' || event === 'play' || event === 'pause') {
+                        isRemoteUpdate = false;
+                    }
+                    return; 
+                }
+
+                // Broadcast local actions to everyone else (only when not part of a coordinated sync)
+                if (!pendingPrepareId) {
+                    if (event === 'play') {
+                        channel.publish('video-sync', { action: 'play', time: currentTime });
+                    } else if (event === 'pause') {
+                        channel.publish('video-sync', { action: 'pause', time: currentTime });
+                    } else if (event === 'seeked') {
+                        // Initiator of a seek should coordinate the seek across participants:
+                        // generate a prepareId, set pending, publish seek-prepare and mark self ready.
+                        const prepareId = Date.now().toString(36) + '-' + Math.floor(Math.random()*10000);
+                        pendingPrepareId = prepareId;
+                        // publish seek-prepare so others pause and seek to time
+                        channel.publish('video-sync', { action: 'seek-prepare', time: currentTime, prepareId });
+                        // immediately mark self as ready (local already seeked)
+                        channel.publish('sync:ready', { prepareId });
+                        // start coordinator readiness collection
+                        coordinateStart(prepareId);
+                    }
+                } else {
+                    // if part of a coordinated load, listen for playerstatus to signal readiness
+                    if (data && data.event === 'playerstatus') {
+                        // announce ready for current prepareId
+                        if(channel && pendingPrepareId){
+                            channel.publish('sync:ready', { prepareId: pendingPrepareId });
+                        }
+                    }
+                }
+                // handle playerstatus when asked for heartbeat/status
+                if(data && data.event === 'playerstatus'){
+                    if(expectingStatusPublish){
+                        // publish heartbeat/status with timestamp
+                        const payload = { status: data, ts: Date.now() };
+                        channel.publish('status', payload);
+                        expectingStatusPublish = false;
+                    }
+                    // If we have a recent remote status to compare against, attempt drift correction
+                    if(lastSeenRemoteStatus && !pendingPrepareId){
+                        const localTime = data.currentTime || 0;
+                        const target = lastSeenRemoteStatus.remoteTime || (lastSeenRemoteStatus.remote.currentTime || 0);
+                        const drift = Math.abs(localTime - target);
+                        // if drift greater than threshold (1.2s), correct
+                        if(drift > 1.2){
+                            isRemoteUpdate = true;
+                            try{ iframe.contentWindow.postMessage({ command: 'seek', time: target }, '*'); }catch(e){}
+                            // if remote playing state differs, match it
+                            if(lastSeenRemoteStatus.remote.playing && !data.playing){ try{ iframe.contentWindow.postMessage({ command: 'play' }, '*'); }catch(e){} }
+                            if(!lastSeenRemoteStatus.remote.playing && data.playing){ try{ iframe.contentWindow.postMessage({ command: 'pause' }, '*'); }catch(e){} }
+                            addSystemMessage(`Corrected drift ${drift.toFixed(2)}s`);
+                            // reset lastSeenRemoteStatus after correction
+                            lastSeenRemoteStatus = null;
+                            setTimeout(()=>{ isRemoteUpdate = false; }, 1000);
+                        }
+                    }
+                }
+            }
+        });
+
+        // Handle Remote Commands (From Ably)
+        // --- Sync coordination state ---
+        const syncState = {
+            // prepareId -> { coordinator: clientId, expected: number, ready: Set, timeoutId }
+        };
+        let pendingPrepareId = null; // when a load arrives, store prepareId to mark readiness on playerstatus
+
+        function handleRemoteCommand(cmd, senderClientId) {
+            // Mark that the following player events are caused by remote control
+            isRemoteUpdate = true;
+
+            switch (cmd.action) {
+                case 'play':
+                    try { iframe.contentWindow.postMessage({ command: 'play', time: cmd.time }, '*'); }
+                    catch (e) { iframe.contentWindow.postMessage({ command: 'seek', time: cmd.time }, '*'); iframe.contentWindow.postMessage({ command: 'play' }, '*'); }
+                    addSystemMessage(`Resumed by someone`);
+                    break;
+                case 'pause':
+                    iframe.contentWindow.postMessage({ command: 'pause' }, '*');
+                    addSystemMessage(`Paused by someone`);
+                    break;
+                case 'seek':
+                    iframe.contentWindow.postMessage({ command: 'seek', time: cmd.time }, '*');
+                    addSystemMessage(`Seeked to ${Math.floor(cmd.time)}s`);
+                    break;
+                case 'seek-prepare':
+                    // Coordinator requested a coordinated seek: pause, seek, report ready
+                    pendingPrepareId = cmd.prepareId || null;
+                    try{ iframe.contentWindow.postMessage({ command: 'pause' }, '*'); }catch(e){}
+                    try{ iframe.contentWindow.postMessage({ command: 'seek', time: cmd.time }, '*'); }catch(e){}
+                    addSystemMessage(`Preparing seek to ${cmd.time}s`);
+                    // we'll publish sync:ready when we receive playerstatus (handled in message listener)
+                    break;
+                case 'load':
+                    // load a new media url (src provided) or build from id
+                    if (cmd.src) {
+                        iframe.src = cmd.src;
+                    } else if (cmd.mediaType === 'movie' && cmd.id) {
+                        iframe.src = `https://vidfast.pro/movie/${cmd.id}?autoPlay=false&title=true&poster=true`;
+                    } else if (cmd.mediaType === 'tv' && cmd.id && cmd.season && cmd.episode) {
+                        iframe.src = `https://vidfast.pro/tv/${cmd.id}/${cmd.season}/${cmd.episode}?autoPlay=false&title=true&poster=true`;
+                    }
+                    addSystemMessage(`Loaded new media requested by ${senderClientId || 'someone'}`);
+                    // track prepareId for readiness negotiation
+                    if (cmd.prepareId) {
+                        pendingPrepareId = cmd.prepareId;
+                    }
+                    break;
+            }
+
+            // Safety timeout to reset flag if player doesn't respond quickly
+            setTimeout(() => { isRemoteUpdate = false; }, 1200);
+        }
+
+        // ========== RapidAPI Search (TMDB via RapidAPI) ==========
+        async function performSearch(query) {
+            const resultsEl = document.getElementById('searchResults');
+            resultsEl.innerHTML = 'Searching...';
+            if(!RAPIDAPI_KEY){ resultsEl.innerHTML = '<div class="text-sm text-yellow-300">Set RAPIDAPI_KEY in the script to enable search.</div>'; return; }
+            try {
+                // Streaming Availability: search shows by title
+                const url = `https://${RAPIDAPI_HOST}/shows/search/title?title=${encodeURIComponent(query)}&country=us`;
+                const resp = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'x-rapidapi-key': RAPIDAPI_KEY,
+                        'x-rapidapi-host': RAPIDAPI_HOST
+                    }
                 });
+                if(!resp.ok){
+                    let bodyText = '';
+                    try { bodyText = await resp.text(); } catch(e) { bodyText = '<unable to read body>'; }
+                    console.error('RapidAPI search failed', resp.status, resp.statusText, bodyText);
+                    resultsEl.innerHTML = `<div class="text-sm text-red-400">Search failed: ${resp.status} ${resp.statusText}</div><div class="text-xs text-gray-400 mt-2">${bodyText}</div><div class="text-xs text-yellow-300 mt-2">If CORS or API-key issues occur, use a small server-side proxy (recommended).</div>`;
+                    return;
+                }
+                const data = await resp.json();
+                // Streaming-availability may return an array or an object. be flexible.
+                let items = [];
+                if (Array.isArray(data)) items = data;
+                else if (Array.isArray(data.results)) items = data.results;
+                else if (Array.isArray(data.titles)) items = data.titles;
+                else if (Array.isArray(data.items)) items = data.items;
+                else if (data.results && Array.isArray(data.results.titles)) items = data.results.titles;
+                else if (data.result && Array.isArray(data.result)) items = data.result;
+                else if (data.length && Array.isArray(data)) items = data;
+
+                if (!items.length) {
+                    resultsEl.innerHTML = '<div class="text-sm text-gray-400">No results</div>';
+                    console.warn('Unexpected RapidAPI response format', data);
+                    return;
+                }
+                renderSearchResults(items);
+            } catch (e) {
+                console.error('Search error', e);
+                resultsEl.innerHTML = `<div class="text-sm text-red-400">Search failed: ${e.message}</div><div class="text-xs text-yellow-300 mt-2">Client-side RapidAPI calls may be blocked by CORS; run a small proxy if this persists.</div>`;
+            }
+        }
+
+        function renderSearchResults(list){
+            const resultsEl = document.getElementById('searchResults');
+            resultsEl.innerHTML = '';
+            if(!list.length) { resultsEl.innerHTML = '<div class="text-sm text-gray-400">No results</div>'; return; }
+            list.slice(0,12).forEach(item => {
+                const el = document.createElement('div');
+                el.className = 'flex items-center justify-between p-2 bg-gray-700 rounded gap-3';
+
+                // create image (if available)
+                const imgWrap = document.createElement('div');
+                imgWrap.className = 'w-14 h-20 flex-shrink-0 bg-gray-900 rounded overflow-hidden';
+                const img = document.createElement('img');
+                img.className = 'w-full h-full object-cover';
+                // try common image fields
+                const imgCandidates = [item.poster, item.poster_path, item.image, item.img, item.posterURL, item.posterURLHigh, item.posterUrl, item.posterURLs, item.poster_urls, item.background, item.backdrop, item.backdrop_path];
+                let imgSrc = '';
+                for(const k of imgCandidates) if(k){ if(typeof k === 'string'){ imgSrc = k; break; } else if(typeof k === 'object'){ // maybe map
+                        if(k.small) { imgSrc = k.small; break; }
+                        if(k.thumb) { imgSrc = k.thumb; break; }
+                    }}
+                if(!imgSrc && item.posterURLs && Array.isArray(item.posterURLs) && item.posterURLs[0]) imgSrc = item.posterURLs[0];
+                if(!imgSrc && item.poster_path && item.poster_path.startsWith('/')) imgSrc = `https://image.tmdb.org/t/p/w300${item.poster_path}`;
+                if(!imgSrc && item.title && item.id && item.type && String(item.type).toLowerCase().includes('movie')) imgSrc = '';
+                img.src = imgSrc || '';
+                img.onerror = function(){
+                    this.onerror = null;
+                    this.src = 'https://via.placeholder.com/140x200?text=No+Image';
+                };
+                img.alt = (item.title || item.name || 'poster');
+                imgWrap.appendChild(img);
+
+                const info = document.createElement('div');
+                info.className = 'flex-1';
+                const title = document.createElement('div');
+                const displayTitle = item.title || item.name || item.titleLong || item.originalTitle || item.titleName || item.nameOriginal || item.title_original || item.showTitle || '';
+                const displayYear = item.firstAirYear || item.year || item.releaseYear || item.release_date || item.first_air_date || '';
+                title.innerHTML = `<div class="font-semibold">${displayTitle}</div><div class="text-xs text-gray-400">${displayYear}</div>`;
+
+                // controls area (for TV show season/episode selectors)
+                const ctrl = document.createElement('div');
+                ctrl.className = 'mt-2 flex items-center gap-2';
+
+                const isShow = String(item.type || item.titleType || item.mediaType || '').toLowerCase().includes('show') || (!item.title && (item.seasons || item.firstAirYear));
+
+                // season and episode selects for TV
+                let seasonSelect = null, episodeSelect = null;
+                if(isShow){
+                    seasonSelect = document.createElement('select');
+                    seasonSelect.className = 'bg-gray-600 text-sm rounded px-2 py-1';
+                    episodeSelect = document.createElement('select');
+                    episodeSelect.className = 'bg-gray-600 text-sm rounded px-2 py-1';
+                    // populate if item.seasons present
+                    if(item.seasons && Array.isArray(item.seasons) && item.seasons.length){
+                        item.seasons.forEach(s=>{
+                            const opt = document.createElement('option');
+                            opt.value = s.season || s.seasonNumber || s.season_index || s.seasonNum || s.seasonNumber;
+                            opt.textContent = `S ${opt.value} (${(s.episodes&&s.episodes.length)?s.episodes.length:(s.episodesCount||s.episodeCount||'?')})`;
+                            seasonSelect.appendChild(opt);
+                        });
+                        // fill episode select for first season
+                        const first = item.seasons[0];
+                        const epCount = (first.episodes && first.episodes.length) ? first.episodes.length : (first.episodesCount||first.episodeCount||10);
+                        for(let i=1;i<=epCount;i++){ const o=document.createElement('option'); o.value=i; o.textContent=`E ${i}`; episodeSelect.appendChild(o); }
+                        seasonSelect.addEventListener('change', ()=>{
+                            // update episodes for selected season if available
+                            const idx = seasonSelect.selectedIndex;
+                            episodeSelect.innerHTML = '';
+                            const s = item.seasons[idx];
+                            const count = (s && s.episodes && s.episodes.length) ? s.episodes.length : (s.episodesCount||s.episodeCount||10);
+                            for(let i=1;i<=count;i++){ const o=document.createElement('option'); o.value=i; o.textContent=`E ${i}`; episodeSelect.appendChild(o); }
+                        });
+                    } else {
+                        // unknown seasons: provide default 1..5
+                        for(let s=1;s<=5;s++){ const o=document.createElement('option'); o.value=s; o.textContent=`S ${s}`; seasonSelect.appendChild(o); }
+                        for(let e=1;e<=10;e++){ const o=document.createElement('option'); o.value=e; o.textContent=`E ${e}`; episodeSelect.appendChild(o); }
+                    }
+                    ctrl.appendChild(seasonSelect);
+                    ctrl.appendChild(episodeSelect);
+                }
+
+                const btnWrap = document.createElement('div');
+                const btn = document.createElement('button');
+                btn.className = 'ml-2 bg-blue-600 px-3 py-1 rounded';
+                btn.textContent = 'Load';
+                btn.addEventListener('click', async ()=>{
+                    // prefer imdb id (tt...) if available, else try tmdb id or generic id
+                    const imdb = item.imdbID || item.imdb_id || item.imdb || item.imdbId;
+                    const tmdb = item.id || item.tmdbId || item.tmdb_id || item.tmdb;
+                    let src = '';
+                    if(imdb && String(imdb).startsWith('tt')){
+                        // imdb id is preferred: could be movie or show
+                        if(isShow){
+                            const s = (seasonSelect && seasonSelect.value) ? seasonSelect.value : 1;
+                            const e = (episodeSelect && episodeSelect.value) ? episodeSelect.value : 1;
+                            src = `https://vidfast.pro/tv/${imdb}/${s}/${e}?autoPlay=true&title=true&poster=true`;
+                        } else {
+                            src = `https://vidfast.pro/movie/${imdb}?autoPlay=true&title=true&poster=true`;
+                        }
+                    } else if(tmdb){
+                        if(isShow){
+                            const s = (seasonSelect && seasonSelect.value) ? seasonSelect.value : 1;
+                            const e = (episodeSelect && episodeSelect.value) ? episodeSelect.value : 1;
+                            src = `https://vidfast.pro/tv/${tmdb}/${s}/${e}?autoPlay=true&title=true&poster=true`;
+                        } else {
+                            src = `https://vidfast.pro/movie/${tmdb}?autoPlay=true&title=true&poster=true`;
+                        }
+                    } else if(item.type === 'show'){
+                        const s = (seasonSelect && seasonSelect.value) ? seasonSelect.value : 1;
+                        const e = (episodeSelect && episodeSelect.value) ? episodeSelect.value : 1;
+                        if(item.imdbID) src = `https://vidfast.pro/tv/${item.imdbID}/${s}/${e}?autoPlay=true&title=true&poster=true`;
+                    }
+                    if(!src){
+                        alert('This item has no usable id to load in VidFast.');
+                        return;
+                    }
+                    // Coordinator flow: generate prepareId and request others to load
+                    const prepareId = Date.now().toString(36) + '-' + Math.floor(Math.random()*10000);
+                    pendingPrepareId = prepareId;
+                    // set iframe but do not autoplay locally; wait for coordinated start
+                    iframe.src = src.replace('autoPlay=true', 'autoPlay=false');
+                    addSystemMessage(`Requested load: ${displayTitle}`);
+                    // publish load with prepareId
+                    if(channel) channel.publish('video-sync', { action: 'load', mediaType: isShow? 'tv':'movie', id: imdb || tmdb || null, src, prepareId });
+                    // Begin coordinator readiness collection
+                    coordinateStart(prepareId);
+                });
+                btnWrap.appendChild(btn);
+                info.appendChild(title);
+                if(isShow) info.appendChild(ctrl);
+                el.appendChild(imgWrap);
+                el.appendChild(info);
+                el.appendChild(btnWrap);
+                resultsEl.appendChild(el);
             });
         }
 
-        // 2. Chat Logic
-        function sendChatMessage() {
-            const input = document.getElementById('chat-input');
-            if (input.value.trim() !== "") {
-                channel.publish('chat', { user: userName, text: input.value });
-                input.value = "";
-            }
-        }
+        document.getElementById('btnSearch').addEventListener('click', ()=>{
+            const q = document.getElementById('searchInput').value.trim();
+            if(q) performSearch(q);
+        });
+        document.getElementById('searchInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); document.getElementById('btnSearch').click(); } });
 
-        function appendChat(user, text) {
+        function addSystemMessage(text) {
             const div = document.createElement('div');
-            div.innerHTML = `<span class="text-blue-400 font-bold">${user}:</span> <span class="text-gray-200">${text}</span>`;
-            chatBox.appendChild(div);
-            chatBox.scrollTop = chatBox.scrollHeight;
-        }
-
-        function appendSystemMessage(text) {
-            const div = document.createElement('div');
-            div.className = "text-xs text-gray-500 italic text-center py-1";
+            div.className = "text-center text-xs text-gray-500 italic my-2";
             div.innerText = text;
-            chatBox.appendChild(div);
+            document.getElementById('chatContainer').appendChild(div);
         }
 
-        // 3. Sync Logic
-        function changeVideo() {
-            const videoId = document.getElementById('video-url').value;
-            if (videoId) {
-                channel.publish('video-sync', { videoId: videoId });
+        // ----- Coordination helpers -----
+        async function coordinateStart(prepareId){
+            if(!channel) return;
+            try{
+                // find current members expected
+                channel.presence.get((err, members)=>{
+                    const expected = members ? members.length : 1;
+                    syncState[prepareId] = { coordinator: ably.connection.id || currentUser, expected, ready: new Set(), timeoutId: null };
+                    // include self as ready only after iframe reports playerstatus; do nothing now
+                    addSystemMessage(`Waiting for ${expected} participants to be ready...`);
+                    // after 10s, if not all ready, force start
+                    syncState[prepareId].timeoutId = setTimeout(()=>{
+                        publishStartForPrepare(prepareId);
+                    }, 10000);
+                });
+            }catch(e){ console.warn(e); publishStartForPrepare(prepareId); }
+        }
+
+        function handleSyncReady(clientId, data){
+            // data should contain prepareId
+            const prepareId = data.prepareId || (data && data.prepareId) || data;
+            if(!prepareId || !syncState[prepareId]) return;
+            syncState[prepareId].ready.add(clientId);
+            addSystemMessage(`${clientId} is ready (${syncState[prepareId].ready.size}/${syncState[prepareId].expected})`);
+            if(syncState[prepareId].ready.size >= syncState[prepareId].expected){
+                // all ready
+                clearTimeout(syncState[prepareId].timeoutId);
+                publishStartForPrepare(prepareId);
             }
         }
+
+        function publishStartForPrepare(prepareId){
+            const s = syncState[prepareId];
+            if(!s) return;
+            const startAt = Date.now() + 2500; // 2.5s from now to allow scheduling
+            channel.publish('sync:start', { prepareId, startAt, coordinator: s.coordinator });
+            addSystemMessage('Publishing start @ '+new Date(startAt).toLocaleTimeString());
+            // cleanup state after 15s
+            setTimeout(()=>{ delete syncState[prepareId]; }, 15000);
+        }
+
+        function handleSyncStart(data){
+            if(!data || !data.prepareId) return;
+            const prepareId = data.prepareId;
+            const startAt = data.startAt || Date.now() + 2000;
+            addSystemMessage('Starting playback at '+new Date(startAt).toLocaleTimeString());
+            const delay = Math.max(0, startAt - Date.now());
+            // schedule play action
+            setTimeout(()=>{
+                try{ iframe.contentWindow.postMessage({ command: 'play' }, '*'); }
+                catch(e){ console.warn('play postMessage failed', e); }
+                // clear pendingPrepareId to resume normal broadcast behavior
+                if(pendingPrepareId === prepareId) pendingPrepareId = null;
+            }, delay);
+        }
+
+        // ----- Heartbeat / periodic sync -----
+        function requestPlayerStatusForHeartbeat(){
+            if(!channel || !iframe || !iframe.contentWindow) return;
+            expectingStatusPublish = true;
+            try{ iframe.contentWindow.postMessage({ command: 'getStatus' }, '*'); }
+            catch(e){ expectingStatusPublish = false; }
+        }
+
+        function handleRemoteStatus(clientId, data){
+            // data: { status: { event data }, ts }
+            if(!data || !data.status) return;
+            const remote = data.status;
+            const ts = data.ts || Date.now();
+            const now = Date.now();
+            const latencyMs = Math.max(0, now - ts);
+            const remoteTime = (remote.currentTime || 0) + (latencyMs/1000);
+
+            // Request local current time via getStatus? We'll use last known playerstatus (best-effort). Request immediate status
+            try{ iframe.contentWindow.postMessage({ command: 'getStatus' }, '*'); }catch(e){}
+
+            // When we receive our playerstatus, we'll compare and correct. For now, compute a desired correction
+            // Simple correction: if drift > 1.5s, seek to remoteTime; if playback state differs, apply it.
+            setTimeout(()=>{
+                // ask for current status then compare in a short window via expectingStatusPublish
+                expectingStatusPublish = true;
+                try{ iframe.contentWindow.postMessage({ command: 'getStatus' }, '*'); }catch(e){ expectingStatusPublish = false; }
+                // We'll handle the comparison when our playerstatus arrives in the main message listener by checking last remote status stored below
+                lastSeenRemoteStatus = { clientId, remote, remoteTime, latencyMs };
+            }, 200);
+        }
+
+        let lastSeenRemoteStatus = null;
+
+        // When our playerstatus arrives and expectingStatusPublish was set, we published our own status above.
+        // Also act on lastSeenRemoteStatus to correct drift
+        // Add a small handler that checks lastSeenRemoteStatus whenever we get a playerstatus from our player
+        // We'll augment the existing message listener: when playerstatus and not pendingPrepareId, compare and correct.
+
     </script>
 </body>
 </html>
